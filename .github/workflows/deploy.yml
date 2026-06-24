@@ -1,0 +1,96 @@
+name: Build and Deploy SmartHire AI
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE_NAME: smarthire-backend
+  ARTIFACT_REGISTRY: us-central1-docker.pkg.dev
+
+jobs:
+  deploy-backend:
+    name: Deploy FastAPI to Google Cloud Run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCP Artifact Registry
+        run: |
+          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+      - name: Create Artifact Registry Repository (if not exists)
+        run: |
+          gcloud artifacts repositories create smarthire-repo \
+            --repository-format=docker \
+            --location=$REGION \
+            --description="Docker repository for SmartHire backend" || true
+
+      - name: Build and Push Docker Image
+        run: |
+          IMAGE_TAG="$REGION-docker.pkg.dev/$PROJECT_ID/smarthire-repo/$SERVICE_NAME:$GITHUB_SHA"
+          docker build -t $IMAGE_TAG ./backend
+          docker push $IMAGE_TAG
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      - name: Deploy Docker Image to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smarthire-repo/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          region: ${{ env.REGION }}
+          flags: |
+            --allow-unauthenticated
+            --port=8080
+          env_vars: |
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }}
+            CLOUD_STORAGE_BUCKET=${{ secrets.CLOUD_STORAGE_BUCKET }}
+            FIRESTORE_COLLECTION=screenings
+
+  deploy-frontend:
+    name: Deploy React to Firebase Hosting
+    runs-on: ubuntu-latest
+    needs: deploy-backend
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Build React Assets
+        run: |
+          cd frontend
+          # Pass the Google Client Config dynamically in CI
+          export VITE_FIREBASE_CONFIG='${{ secrets.FIREBASE_CONFIG }}'
+          npm run build
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_SMARTHIRE_AI }}'
+          projectId: smarthire-ai
+          channelId: live
