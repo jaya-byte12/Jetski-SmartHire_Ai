@@ -1,0 +1,21 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Backend
+backend/venv/
+backend/.storage/
+backend/__pycache__/
+backend/routers/__pycache__/
+backend/services/__pycache__/
+backend/models/__pycache__/
+backend/*.pyc
+
+# Env
+.env
+backend/.env
+
+# System / IDEs
+.DS_Store
+.vscode/
+.idea/
