@@ -20,6 +20,7 @@ WORKDIR /app
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python dependencies from builder
@@ -39,17 +40,18 @@ USER appuser
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8000
 
 # Run with gunicorn + uvicorn workers for production
 CMD ["gunicorn", \
      "--workers=4", \
      "--worker-class=uvicorn.workers.UvicornWorker", \
-     "--bind=0.0.0.0:8080", \
+     "--bind=0.0.0.0:${PORT:-8000}", \
      "--access-logfile=-", \
      "--error-logfile=-", \
      "--log-level=info", \
      "main:app"]
+
