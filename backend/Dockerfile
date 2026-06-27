@@ -16,8 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend source code
 COPY . .
 
-# Expose port 8080 (standard for GCP Cloud Run)
-EXPOSE 8080
+EXPOSE ${PORT:-8080}
 
 # Run FastAPI backend using uvicorn with 4 workers for production efficiency
-CMD ["uvicorn", "main.py:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "4"]
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 4
